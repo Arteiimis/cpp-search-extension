@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fs::{DirEntry, File};
 use std::io::{BufRead, BufReader};
@@ -23,7 +23,10 @@ fn main() -> Result<()> {
     println!("Raw search index length: {}", raw_search_index.len());
     let search_index = parse_docs(&docs_path, raw_search_index)?;
     println!("Search index length: {}", search_index.len());
-    let contents = serde_json::to_string(&search_index)?;
+    // Sorted keys: HashMap order is randomised per process, which would make every
+    // regeneration of std.js differ even when nothing about the docs changed.
+    let sorted: BTreeMap<_, _> = search_index.into_iter().collect();
+    let contents = serde_json::to_string(&sorted)?;
     let path = Path::new("../../extension/index/std.js");
     fs::write(path, format!("var searchIndex={};", contents))?;
     Ok(())
