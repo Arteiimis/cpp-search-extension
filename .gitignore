@@ -9,6 +9,8 @@ docs/public
 *.db
 manifest.json
 extension/core
+.docs-offline
+__pycache__
 
 tools/target
 tools/Cargo.lock

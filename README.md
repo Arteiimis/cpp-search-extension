@@ -50,6 +50,32 @@ $ make firefox # For Firefox version
 $ make edge # For Edge version
 ```
 
+## Updating the search index
+
+The extension searches `extension/index/std.js`, which maps `std::name` to a cppreference page. It
+is a snapshot of the cppreference offline docs built by `tools/std`, so a new C++ release makes
+symbols such as `std::print`, `std::expected` or `std::jthread` silently unsearchable:
+
+```bash
+$ make index   # needs python3 (stdlib only) and cargo
+```
+
+[`tools/std/gen_symbol_map.py`](tools/std/gen_symbol_map.py) downloads the newest "html book"
+from the [unofficial cppreference-doc releases](https://github.com/PeterFeicht/cppreference-doc/releases)
+(the official archive is stuck at 2019-06-07) and rebuilds `tools/std/search-cpp` / `search-c`
+from the docs themselves: page titles, symbol index pages, member tables and the doxygen tag
+file. `tools/std` (Rust) then joins them with the description tables of every page and writes
+`extension/index/std.js`. Names whose page is gone are dropped, so the index never links to a
+404; `--check` fails the run when well-known symbols go missing, and
+`.github/workflows/refresh-index.yml` opens a pull request with the monthly refresh.
+
+Both steps can also be run by hand:
+
+```bash
+$ python tools/std/gen_symbol_map.py latest --extract-to .docs-offline --check
+$ cd tools/std && cargo run --release -- ../../.docs-offline/reference/en && cd ../..
+```
+
 ## Get involved
 
 - You can contact us on Discord Channel: https://discord.gg/xucZNVd

@@ -1,0 +1,42 @@
+name: Refresh search index
+
+# The index is a snapshot of the cppreference offline docs: without a refresh,
+# symbols added since the last one are simply not searchable.
+on:
+  schedule:
+    - cron: '0 4 1 * *' # monthly
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Rebuild the symbol map from the newest cppreference docs
+        run: python3 tools/std/gen_symbol_map.py latest --extract-to .docs-offline --check
+
+      - name: Rebuild extension/index/std.js
+        working-directory: tools/std
+        run: cargo run --release -- ../../.docs-offline/reference/en
+
+      - name: Open or update the refresh pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: refresh-search-index
+          delete-branch: true
+          commit-message: Update search index
+          title: Update search index
+          body: |
+            Automatic refresh of the search index from the newest cppreference
+            offline docs (`make index`).
+
+            Review the `self-check` step output in the log above: it reports how
+            many well-known symbols were found, and fails the job when any of
+            them moved or disappeared.
