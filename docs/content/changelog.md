@@ -5,6 +5,14 @@ weight = 3
 +++
 
 
+# v0.5 - 2026-10-15
+
+- Rebuild the search index from the newest cppreference docs (2025-02), so C++20/23/26 symbols
+  such as `std::print`, `std::println`, `std::expected`, `std::jthread`, `std::mdspan`,
+  `std::ranges` views and `std::stacktrace` are searchable again (13018 -> 19960 entries)
+- Add `tools/std/gen_symbol_map.py` plus `make index` to regenerate the index, and a monthly
+  workflow that opens a pull request with the refresh
+
 # v0.4 - 2023-07-29
 
 - Update to last cppreference.com docs
