@@ -87,8 +87,12 @@ fn parse_docs(
 
 fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
     if dir.is_dir() {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
+        // fs::read_dir yields entries in filesystem order; several pages can offer a
+        // description for the same page (the last one wins), so an unsorted walk would
+        // make extension/index/std.js depend on the machine that generated it.
+        let mut entries = fs::read_dir(dir)?.collect::<io::Result<Vec<_>>>()?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
             let path = entry.path();
             if path.is_dir() {
                 visit_dirs(&path, cb)?;
