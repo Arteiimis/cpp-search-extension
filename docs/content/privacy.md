@@ -5,24 +5,26 @@ weight = 3
 +++
 
 
--- Last updated: 2020-04-20
+-- Last updated: 2026-10-16
 
-[Huhu.io](https://huhu.io), ("we",or "us") operates the **C/C++ Search Extension** (including Chrome, Firefox and Microsoft Edge versions) and the website [https://cpp.extension.sh](/) (collectively, the “Service” or “Products”). 
-We believe that your privacy is a fundamental right. This page informs you of our policies and practices regarding the collection, use and disclosure of information which personally identifies you ("Personal Information") when you use our Service.
+This fork of the **C/C++ Search Extension** is built from the source in
+[this repository](https://github.com/Arteiimis/cpp-search-extension). It collects no personal
+information.
 
-# Information collection
+# What stays on your machine
 
-No information do we collect, including and not limited to:
+- Search queries are matched inside the extension and are not sent anywhere unless you pick a
+  result, which opens a cppreference.com page, or the corresponding local page in offline mode.
+- The options (language, offline mode, offline docs path) and the local search history are kept in
+  the browser's extension storage (`chrome.storage.local`); clearing them in the options page
+  removes them.
+- The extension ships the search index inside its package: no analytics, no ads and no third-party
+  requests.
 
-- Your search history
-- Your search preferences
+GitHub hosts this source, the release packages and the issue tracker, and its own privacy policy
+applies to those pages.
 
-# Updates to this Privacy Policy
+# Contact
 
-We reserve the right to update or change our Privacy Policy at any time and you should check this Privacy Policy periodically. Your continued use of the Service after we post any modifications to the Privacy Policy on this page will constitute your acknowledgment of the modifications and your consent to abide and be bound by the modified Privacy Policy.
-
-The "Last updated" legend at the top of this Privacy Policy indicates when this Privacy Policy was last revised. Any changes are effective when we post the revised Privacy Policy on the Services.
-
-# Contact us
-
-If You have any questions about this Privacy Policy, please contact us at [legal@huhu.io](mailto:legal@huhu.io).
+Questions or corrections: open an issue at
+https://github.com/Arteiimis/cpp-search-extension/issues.
