@@ -49,7 +49,9 @@ cppreference.com. The offline docs have to match the snapshot the index was buil
 
 ## Development
 
-[jsonnet](https://jsonnet.org/) is required before getting started. To install `jsonnet`, please check `jsonnet`'s [README](https://github.com/google/jsonnet#packages). For Linux users, the `snap` is a good choice to [install jsonnet](https://snapcraft.io/install/jsonnet/ubuntu).
+[jsonnet](https://jsonnet.org/) is required before getting started. To install `jsonnet`, check
+`jsonnet`'s [README](https://github.com/google/jsonnet#packages); on Linux the `snap` is a good
+choice to [install jsonnet](https://snapcraft.io/install/jsonnet/ubuntu).
 
 ```bash
 $ git clone --recursive https://github.com/Arteiimis/cpp-search-extension
