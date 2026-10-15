@@ -12,6 +12,10 @@ weight = 3
   `std::ranges` views and `std::stacktrace` are searchable again (13018 -> 19960 entries)
 - Add `tools/std/gen_symbol_map.py` plus `make index` to regenerate the index, and a monthly
   workflow that opens a pull request with the refresh
+- Rank search results by match quality instead of match position only: an exact component match
+  wins (`print` now finds `std::print` first, `sort` finds `std::sort`, `move` finds `std::move`),
+  an exact case match wins (`hash` finds `std::hash` before `std::Hash`), C++ technical
+  specification pages are demoted, and names pointing at the same page are listed once
 
 # v0.4 - 2023-07-29
 
