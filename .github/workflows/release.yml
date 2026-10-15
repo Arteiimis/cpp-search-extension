@@ -116,11 +116,28 @@ jobs:
           version = sys.argv[1]
           short = ".".join(version.split(".")[:2])
           text = pathlib.Path("docs/content/changelog.md").read_text(encoding="utf-8")
+
+          def unwrap(body):
+              # The changelog is wrapped for the repository, but every newline of a
+              # release body is rendered as a line break, so join the wrapped lines
+              # back into one line per bullet and keep only the block boundaries.
+              out = []
+              for line in body.splitlines():
+                  stripped = line.strip()
+                  block = (not stripped
+                           or stripped.startswith(("- ", "* ", "| ", "#", "```", "> "))
+                           or re.match(r"\d+\. ", stripped))
+                  if block or not out:
+                      out.append(stripped)
+                  else:
+                      out[-1] += " " + stripped
+              return "\n".join(out)
+
           # sections look like "# v0.5 - 2026-10-15"
           for section in re.split(r"^# (?=v)", text, flags=re.M)[1:]:
               heading = section.splitlines()[0].split()[0].strip()
               if heading in ("v%s" % short, "v%s" % version):
-                  body = "\n".join(section.splitlines()[1:]).strip()
+                  body = unwrap("\n".join(section.splitlines()[1:]).strip())
                   pathlib.Path("RELEASE_NOTES.md").write_text(body + "\n", encoding="utf-8")
                   print("release notes taken from the '%s' changelog section" % heading)
                   break
