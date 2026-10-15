@@ -62,6 +62,7 @@ PROBES = [
 TAG_RE = re.compile(r"</?[a-zA-Z][^>]*>")
 TITLE_RE = re.compile(r"<title>(.*?)</title>", re.S)
 H1_RE = re.compile(r"<h1[^>]*>(.*?)</h1>", re.S)
+HEADING_RE = re.compile(r"<h2[^>]*>(.*?)</h2>", re.S)
 # rows are matched without crossing a nested <tr> (description tables embed tables)
 ROW_RE = re.compile(r'<tr class="t-dsc">((?:(?!</?tr\b).)*?)</tr>', re.S)
 CELL_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.S)
@@ -267,15 +268,39 @@ def scope(h1, doc_path):
 
 
 def link_target(html_fragment, fallback):
-    """Path of the first link in a table cell, else the page's own path."""
+    """-> (path, linked) of the first link in a table cell.
+
+    A cell without a link (an inherited member or an alias listed on a class
+    page) has no page of its own, so the enclosing page stands in for it; the
+    tag file knows which page actually declares such a member.
+    """
     m = TITLE_ATTR_RE.search(html_fragment)
     if not m:
-        return fallback
+        return fallback, False
     title = html.unescape(m.group(1))
     if "page does not exist" in title:
-        return None
+        return None, False
     # cppreference titles spell page names with spaces ("cpp/types/size t")
-    return re.sub(r"\s", "_", title)
+    return re.sub(r"\s", "_", title), True
+
+
+def inherited_sections(raw):
+    """-> [(start, end, base page)] of the "Inherited from X" h2 sections.
+
+    Those sections repeat the members of a base class on the derived page:
+    "std::ctype::print" listed there is really the std::ctype_base constant.
+    """
+    heads = list(HEADING_RE.finditer(raw))
+    out = []
+    for i, head in enumerate(heads):
+        if "Inherited from" not in re.sub(r"<[^>]*>", "", head.group(1)):
+            continue
+        target, linked = link_target(head.group(1), None)
+        if not linked:
+            continue
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(raw)
+        out.append((head.end(), end, target))
+    return out
 
 
 def parse_page(path, raw):
@@ -298,20 +323,32 @@ def parse_page(path, raw):
         raw = raw[:m.start()]
 
     names = cell_names(title)
+    sections = inherited_sections(raw)
+
+    def section_target(pos):
+        for start, end, target in sections:
+            if start <= pos < end:
+                return target
+        return None
+
     rows = []
-    for row in ROW_RE.findall(raw):
-        cells = CELL_RE.findall(row)
+    for m in ROW_RE.finditer(raw):
+        cells = CELL_RE.findall(m.group(0))
         if len(cells) != 2 or not cells[0].strip():
             continue
         row_names = cell_names(cells[0])
         if not row_names:
             continue
-        target = link_target(cells[0], doc_path)
+        target, linked = link_target(cells[0], doc_path)
         if target is None:
             continue
+        if not linked:
+            # an inherited member keeps the key of the derived class it is
+            # listed on, but its page belongs to the base class
+            target = section_target(m.start()) or target
         for name in row_names:
             key = name if "::" in name or "(" in name or name.startswith("operator") else prefix + name
-            rows.append((key, target))
+            rows.append((key, target, linked))
     return doc_path, names, rows
 
 
@@ -432,18 +469,29 @@ def build(docs):
     # symbol index pages carry the namespace aliases (std::stacktrace, ...)
     for bucket, key, target in index_entries:
         buckets[bucket].setdefault(key, target)
-    # description tables cover members, enumerators and aliases without a page
+    # description tables cover members, enumerators and aliases without a page;
+    # the ones with a link know their own page and go before the tag file
+    unlinked_rows = []
     for bucket, _, _, rows in parsed:
-        for key, target in rows:
-            buckets[bucket].setdefault(key, target)
-    # tag file members fill what the tables do not spell out
+        for key, target, linked in rows:
+            if linked:
+                buckets[bucket].setdefault(key, target)
+            else:
+                unlinked_rows.append((bucket, key, target))
+    # tag file members fill what the tables do not spell out, and they know where
+    # a member is declared: "std::ctype::print" listed without a link on the
+    # std::ctype page is really documented on the std::ctype_base page
+    pages_set = docs_pages.doc_paths()
     for key, target in parse_tagfile(docs_pages.read_tagfile()):
+        if target not in pages_set:
+            continue
         bucket = next((b for b in buckets if target.startswith(b)), None)
         if bucket:
             buckets[bucket].setdefault(key, target)
+    for bucket, key, target in unlinked_rows:
+        buckets[bucket].setdefault(key, target)
 
     # never index a name that would 404 on cppreference.com
-    pages_set = docs_pages.doc_paths()
     for prefix, entries in buckets.items():
         buckets[prefix] = {k: v for k, v in entries.items() if v in pages_set}
     return buckets
@@ -493,6 +541,7 @@ def main():
         docs = args.extract_to
 
     buckets = build(docs)
+    os.makedirs(args.out_dir, exist_ok=True)
     for fname, prefix in (("search-cpp", "cpp/"), ("search-c", "c/")):
         entries = buckets[prefix]
         path = os.path.join(args.out_dir, fname)
