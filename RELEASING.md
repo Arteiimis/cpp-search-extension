@@ -89,6 +89,37 @@ A listing belongs to the account that created it, so this fork has two options:
 Two builds of the same extension cannot share an item id, so this decision comes before the first
 upload, not after.
 
+### Preparing an Edge submission (Partner Center)
+
+1. Register at Partner Center (Workspaces -> Edge). An individual account is free; there is no
+   fee and no tax profile for Edge extensions.
+2. `Create new extension` and upload the `-edge.zip` from the GitHub release. It is the same MV3
+   manifest as the Chrome package.
+3. Availability: pick the markets (all of them) and the visibility (public).
+4. Properties, per language, `en-US` at least — the name and the short description are read from
+   the **manifest**, so change them in `manifest.jsonnet` and rebuild if the listing needs a
+   different name (a second listing for an extension that already exists on the store should not
+   claim the upstream one's name):
+
+   | Field | Requirement |
+   | --- | --- |
+   | Extension name | required for at least one language, must match the manifest |
+   | Description | required per language, 250 to 10,000 characters |
+   | Short description | required for at least one language, comes from the manifest |
+   | Extension logo | required per language: square, minimum 128x128, 300x300 recommended (`extension/logo.png` is 128x128) |
+   | Small promotional tile | 440x280, listed as an optional field but as a required asset |
+   | Screenshots | optional, up to 6, either 640x480 or 1280x800 |
+   | Search terms, website, support URL, YouTube video | optional |
+
+5. Privacy tab: single purpose ("search the C and C++ standard library from the address bar"),
+   permission justification for `storage` and `unlimitedStorage` (settings, local history, and
+   the offline index the user points at), no remote code (the index ships inside the package),
+   nothing collected. The privacy policy URL is only required once data collection is declared.
+6. Submit and wait for the review, which the documentation describes as up to seven business days.
+7. To update later, bump the version in `manifest.jsonnet`, cut a release, and upload the new zip
+   in Partner Center or through the API above. Edge requires an increasing version for every
+   submission, the same as Chrome.
+
 ## Listing material
 
 Prepared once per listing and reused for every upload:
