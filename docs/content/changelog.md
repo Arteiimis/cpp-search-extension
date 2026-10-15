@@ -16,6 +16,9 @@ weight = 3
   wins (`print` now finds `std::print` first, `sort` finds `std::sort`, `move` finds `std::move`),
   an exact case match wins (`hash` finds `std::hash` before `std::Hash`), C++ technical
   specification pages are demoted, and names pointing at the same page are listed once
+- Link inherited members to the page that declares them (`std::ctype::print` and
+  `std::bad_alloc::what` now open `std::ctype_base` and `std::exception::what`), which also
+  stops one page from filling the results under four different class scopes
 
 # v0.4 - 2023-07-29
 
