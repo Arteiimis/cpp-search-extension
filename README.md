@@ -50,6 +50,8 @@ $ make firefox # For Firefox version
 $ make edge # For Edge version
 ```
 
+Cutting a release and uploading to the browser stores is documented in [RELEASING.md](RELEASING.md).
+
 ## Updating the search index
 
 The extension searches `extension/index/std.js`, which maps `std::name` to a cppreference page. It

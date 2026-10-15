@@ -1,0 +1,142 @@
+name: Release
+
+# A release is cut by pushing a tag that matches the version in manifest.jsonnet:
+#   edit manifest.jsonnet (local version = '0.6.0') and docs/content/changelog.md
+#   git commit -am 'Release version 0.6.0' && git push
+#   git tag v0.6.0 && git push origin v0.6.0
+# The manual run builds and checks the packages without releasing, so a tag is
+# never the first time the build runs.
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Install jsonnet
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jsonnet
+          jsonnet --version
+
+      - name: Read the version and check the tag against it
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(grep -oP "local version = '\K[^']+" manifest.jsonnet)
+          echo "manifest.jsonnet declares $version"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [ "$tag_version" != "$version" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match manifest.jsonnet version $version"
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build a package per browser
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          for browser in chrome edge firefox; do
+            make "$browser"
+            (cd extension && zip -qr "$GITHUB_WORKSPACE/dist/cpp-search-extension-${version}-${browser}.zip" .)
+            echo "built cpp-search-extension-${version}-${browser}.zip"
+          done
+          ls -l dist
+
+      - name: Check the packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob, json, os, zipfile
+
+          version = os.environ["VERSION"]
+          manifest_versions = {"chrome": 3, "edge": 3, "firefox": 2}
+          for path in sorted(glob.glob("dist/*.zip")):
+              browser = path[:-4].rsplit("-", 1)[1]
+              with zipfile.ZipFile(path) as package:
+                  names = package.namelist()
+                  manifest = json.loads(package.read("manifest.json"))
+              assert "manifest.json" in names, f"{path}: manifest.json is not at the archive root"
+              assert manifest["version"] == version, f"{path}: version {manifest['version']} != {version}"
+              assert manifest["manifest_version"] == manifest_versions[browser], (
+                  f"{path}: manifest_version {manifest['manifest_version']} != {manifest_versions[browser]}")
+              assert manifest["omnibox"]["keyword"] == "cc", f"{path}: wrong omnibox keyword"
+              assert any(n.startswith("index/std.js") for n in names), f"{path}: the search index is missing"
+              print(f"{os.path.basename(path)}: {len(names)} files, {os.path.getsize(path) // 1024} KB, "
+                    f"manifest v{manifest['manifest_version']} version {manifest['version']}")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+
+      - name: Collect the release notes from the changelog
+        run: |
+          set -euo pipefail
+          python3 - "${{ needs.build.outputs.version }}" <<'PY'
+          import pathlib, re, sys
+
+          version = sys.argv[1]
+          short = ".".join(version.split(".")[:2])
+          text = pathlib.Path("docs/content/changelog.md").read_text(encoding="utf-8")
+          # sections look like "# v0.5 - 2026-10-15"          for section in re.split(r"^# (?=v)", text, flags=re.M)[1:]:
+              # sections look like "# v0.5 - 2026-10-15"
+              heading = section.splitlines()[0].split()[0].strip()
+              if heading in ("v%s" % short, "v%s" % version):
+                  body = "\n".join(section.splitlines()[1:]).strip()
+                  pathlib.Path("RELEASE_NOTES.md").write_text(body + "\n", encoding="utf-8")
+                  print("release notes taken from the '%s' changelog section" % heading)
+                  break
+          else:
+              print("::warning::docs/content/changelog.md has no section for v%s" % short)
+          PY
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -s RELEASE_NOTES.md ]; then
+            gh release create "$GITHUB_REF_NAME" dist/*.zip \
+              --title "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.zip \
+              --title "$GITHUB_REF_NAME" --generate-notes
+          fi

@@ -9,6 +9,7 @@ docs/public
 *.db
 manifest.json
 extension/core
+dist/
 .docs-offline
 __pycache__
 
