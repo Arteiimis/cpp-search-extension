@@ -116,8 +116,8 @@ jobs:
           version = sys.argv[1]
           short = ".".join(version.split(".")[:2])
           text = pathlib.Path("docs/content/changelog.md").read_text(encoding="utf-8")
-          # sections look like "# v0.5 - 2026-10-15"          for section in re.split(r"^# (?=v)", text, flags=re.M)[1:]:
-              # sections look like "# v0.5 - 2026-10-15"
+          # sections look like "# v0.5 - 2026-10-15"
+          for section in re.split(r"^# (?=v)", text, flags=re.M)[1:]:
               heading = section.splitlines()[0].split()[0].strip()
               if heading in ("v%s" % short, "v%s" % version):
                   body = "\n".join(section.splitlines()[1:]).strip()
