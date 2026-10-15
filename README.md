@@ -4,41 +4,55 @@
 
 ### The ultimate search extension for C/C++.
 
-![Chrome Web Store](https://img.shields.io/chrome-web-store/v/ifpcmhciihicaljnhgobnhoehoabidhd.svg)
-![Mozilla Add-on](https://img.shields.io/amo/v/c-c-search-extension?color=%2320123A)
-![Microsoft Edge](https://img.shields.io/badge/microsoft--edge-v0.4.0-1D4F8C)
-[![license-mit](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/huhu/rust-search-extension/blob/master/LICENSE-MIT)
-[![license-apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/huhu/cpp-search-extension/blob/master/LICENSE)
-[![Discord](https://img.shields.io/discord/711895914494558250?label=chat&logo=discord)](https://discord.gg/xucZNVd)
-
-[https://cpp.extension.sh/](https://cpp.extension.sh/)
+[![release](https://img.shields.io/github/v/release/Arteiimis/cpp-search-extension?label=release)](https://github.com/Arteiimis/cpp-search-extension/releases)
+[![license-mit](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
+[![license-apache](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE-APACHE)
 
 ## Installation
 
-- [Chrome Web Store](https://chrome.google.com/webstore/detail/cc++-search-extension/ifpcmhciihicaljnhgobnhoehoabidhd)
+This fork is not published to a browser store, and the store listings of the original project still
+ship their 0.4.0 build with the search index of 2023. Install a release package instead:
 
-- [Firefox](https://addons.mozilla.org/en-US/firefox/addon/c-c-search-extension/)
+1. Download `cpp-search-extension-<version>-chrome.zip` (or `-edge.zip`) from
+   [Releases](https://github.com/Arteiimis/cpp-search-extension/releases) and unpack it.
+2. Chrome: open `chrome://extensions`, enable **Developer mode**, click **Load unpacked** and select
+   the unpacked folder. Edge: the same under `edge://extensions`.
+3. Firefox: unpack `-firefox.zip` and load the folder as a temporary add-on from
+   `about:debugging#/runtime/this-firefox`. Release builds of Firefox only install signed add-ons,
+   so a permanent install needs a build signed by addons.mozilla.org.
 
-- [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/ffajabficigcddnckikojejmkammkmpe)
-
+Updating means unpacking the newer package and reloading the extension, since nothing updates it in
+the background.
 
 ## Features
 
-- Search standard library docs
-- Offline mode supported
+- Search the C and C++ standard library docs: 19960 names from the 2025-02 cppreference snapshot,
+  including C++20/23/26 additions such as `std::print`, `std::expected`, `std::jthread`,
+  `std::mdspan`, `std::ranges` views and `std::stacktrace`
+- Results ranked by match quality, with inherited members linked to the page that declares them
+- Offline mode: search a local copy of the cppreference offline docs
 - Builtin commands (`:header`, `:posix` and `:history` etc)
 
 ## How to use it
-   
-Input keyword **cc** in the address bar, press `Space` to activate the search bar. Then enter any word 
+
+Input keyword **cc** in the address bar, press `Space` to activate the search bar. Then enter any word
 you want to search, the extension will response the related search results instantly.
 
-## Contribution
+Commands are prefixed with `:` (`cc :header print`), and a trailing `-` pages down through the
+results (`cc print -`).
+
+### Offline mode
+
+Open the extension options, enable offline mode and set the path of an unpacked cppreference archive
+(for example `file:///home/me/cppreference/en/`). Results then open local pages instead of
+cppreference.com. The offline docs have to match the snapshot the index was built from.
+
+## Development
 
 [jsonnet](https://jsonnet.org/) is required before getting started. To install `jsonnet`, please check `jsonnet`'s [README](https://github.com/google/jsonnet#packages). For Linux users, the `snap` is a good choice to [install jsonnet](https://snapcraft.io/install/jsonnet/ubuntu).
 
 ```bash
-$ git clone --recursive https://github.com/huhu/cpp-search-extension
+$ git clone --recursive https://github.com/Arteiimis/cpp-search-extension
 Cloning into 'cpp-search-extension'...
 
 $ cd cpp-search-extension
@@ -50,7 +64,11 @@ $ make firefox # For Firefox version
 $ make edge # For Edge version
 ```
 
-Cutting a release and uploading to the browser stores is documented in [RELEASING.md](RELEASING.md).
+Each target writes `extension/manifest.json` for that browser and copies the shared code from the
+`core` submodule into `extension/core`; `make pack <browser>` zips the result with
+[web-ext](https://github.com/mozilla/web-ext). A clone that was not made with `--recursive` needs
+`git submodule update --init` first. Packaging a release and submitting it to a store is documented
+in [RELEASING.md](RELEASING.md).
 
 ## Updating the search index
 
@@ -78,6 +96,10 @@ $ python tools/std/gen_symbol_map.py latest --extract-to .docs-offline --check
 $ cd tools/std && cargo run --release -- ../../.docs-offline/reference/en && cd ../..
 ```
 
-## Get involved
+## About this fork
 
-- You can contact us on Discord Channel: https://discord.gg/xucZNVd
+This repository is a fork of [huhu/cpp-search-extension](https://github.com/huhu/cpp-search-extension).
+It exists because the original is no longer maintained and its search index was built from a
+2023-07-29 cppreference snapshot, which left newer library symbols unsearchable; see
+[Updating the search index](#updating-the-search-index) for how the index is rebuilt here. The
+original project, its browser store listings and its documentation site remain its own.
