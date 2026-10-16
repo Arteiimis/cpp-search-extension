@@ -26,9 +26,9 @@ the background.
 
 ## Features
 
-- Search the C and C++ standard library docs: 19960 names from the 2025-02 cppreference snapshot,
+- Search the C and C++ standard library docs: 20709 names from the 2026-10 cppreference snapshot,
   including C++20/23/26 additions such as `std::print`, `std::expected`, `std::jthread`,
-  `std::mdspan`, `std::ranges` views and `std::stacktrace`
+  `std::mdspan`, `std::hive`, `std::ranges` views and `std::stacktrace`
 - Results ranked by match quality, with inherited members linked to the page that declares them
 - Offline mode: search a local copy of the cppreference offline docs
 - Builtin commands (`:header`, `:posix` and `:history` etc)
@@ -82,14 +82,17 @@ symbols such as `std::print`, `std::expected` or `std::jthread` silently unsearc
 $ make index   # needs python3 (stdlib only) and cargo
 ```
 
-[`tools/std/gen_symbol_map.py`](tools/std/gen_symbol_map.py) downloads the newest "html book"
-from the [unofficial cppreference-doc releases](https://github.com/PeterFeicht/cppreference-doc/releases)
-(the official archive is stuck at 2019-06-07) and rebuilds `tools/std/search-cpp` / `search-c`
-from the docs themselves: page titles, symbol index pages, member tables and the doxygen tag
-file. `tools/std` (Rust) then joins them with the description tables of every page and writes
-`extension/index/std.js`. Names whose page is gone are dropped, so the index never links to a
-404; `--check` fails the run when well-known symbols go missing, and
-`.github/workflows/refresh-index.yml` opens a pull request with the monthly refresh.
+[`tools/std/gen_symbol_map.py`](tools/std/gen_symbol_map.py) downloads the newest docs archive,
+preferring the [maintained cppreference-doc fork](https://github.com/cristianadam/cppreference-doc/releases)
+over the [html book releases](https://github.com/PeterFeicht/cppreference-doc/releases) it came from
+(the official archive is stuck at 2019-06-07, and the html book stopped in 2025-02 when the
+cppreference upgrade broke its tooling), and rebuilds `tools/std/search-cpp` / `search-c` from the
+docs themselves: page titles, symbol index pages, member tables and the doxygen tag file pinned in
+`tools/std` (the fork ships none). `tools/std` (Rust) then joins them with the description tables
+of every page and writes `extension/index/std.js`. Names whose page is gone are dropped, so the
+index never links to a 404; `--check` fails the run when well-known symbols go missing or the maps
+shrink suspiciously, and `.github/workflows/refresh-index.yml` opens a pull request with the
+monthly refresh.
 
 Both steps can also be run by hand:
 

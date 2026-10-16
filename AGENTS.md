@@ -10,7 +10,8 @@ release and store procedure.
 - `extension/` is the shipped package. `extension/manifest.json` and `extension/core/` are build
   output, not sources.
 - `tools/std/` builds the index: `gen_symbol_map.py` produces `tools/std/search-cpp` and `search-c`,
-  the Rust crate turns them into `extension/index/std.js`.
+  the Rust crate turns them into `extension/index/std.js`. The doxygen tag file next to the
+  generator is a pinned input: the current docs source does not ship one.
 - `core/` is the shared omnibox runtime as a submodule. Changes belong in `extension/`.
 - `docs/` is the zola site, `manifest.jsonnet` the manifest template.
 

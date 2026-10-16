@@ -189,6 +189,9 @@ can only be followed by another upload with a higher version number. The release
 
 ## Version history notes
 
+- 0.6.0 rebuilt the index from the 2026-10 docs taken from the maintained cppreference-doc fork
+  (20709 names); the html book it replaces has had no release since its tooling broke in the
+  cppreference upgrade of 2026-04.
 - 0.5.0 rebuilt the search index (2025-02 cppreference snapshot, 19960 names instead of 13018) and
   ranks results by match quality; a store upload of it is what fixes `std::print` for existing
   users.

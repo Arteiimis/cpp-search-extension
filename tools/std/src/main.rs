@@ -16,6 +16,21 @@ type DocPath = String;
 type DocIdentifier = String;
 type DocDescription = String;
 
+/// The same escape gen_symbol_map.py applies: a page name can contain characters
+/// Windows cannot store in a file name, and both sides have to spell those paths
+/// the same way for the descriptions to join.
+fn escape_name(name: &str) -> String {
+    let mut escaped = String::with_capacity(name.len());
+    for c in name.chars() {
+        if matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '%') {
+            escaped.push_str(&format!("%{:02X}", c as u32));
+        } else {
+            escaped.push(c);
+        }
+    }
+    escaped
+}
+
 fn main() -> Result<()> {
     // The cppreference.com offline docs path
     let docs_path = std::env::args().nth(1).expect("docs_path is required");
@@ -64,7 +79,7 @@ fn parse_docs(
                         })
                         .next()
                     {
-                        let path = title.replace(' ', "_");
+                        let path = escape_name(&title.replace(' ', "_"));
 
                         if let Some(dt) = node.last_child() {
                             let description = dt.text().trim().to_string();

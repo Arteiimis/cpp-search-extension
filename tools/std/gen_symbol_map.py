@@ -3,17 +3,19 @@
 
 Upstream ships both files as static data, snapshotted once in 2023 (CHANGELOG
 v0.4), which is why newer symbols (std::print, std::expected, std::jthread, ...)
-cannot be found.  This script rebuilds them from a cppreference "html book"
-archive, so the index can follow new C++ standards:
+cannot be found.  This script rebuilds them from an offline copy of
+cppreference.com, so the index can follow new C++ standards:
 
     python tools/std/gen_symbol_map.py latest --extract-to .docs-offline
     cd tools/std && cargo run --release -- ../../.docs-offline/reference/en
 
 `make index` runs exactly that and deletes the extracted copy afterwards.  The
-docs argument accepts a release zip, an extracted directory, or `latest` (which
-downloads the newest unofficial html book release, the official one is stuck at
-2019-06-07); `--extract-to` unpacks `reference/` for the Rust step that adds the
-descriptions.
+docs argument accepts a release archive (zip or tar.xz), an extracted directory,
+or `latest`, which downloads the newest release of the maintained
+cristianadam/cppreference-doc fork and falls back to the classic
+PeterFeicht/cppreference-doc html book (the official archive is stuck at
+2019-06-07 and the html book has had no release since 2025-02); `--extract-to`
+unpacks `reference/` for the Rust step that adds the descriptions.
 
 Keys are scraped from the docs themselves, most specific source first:
 
@@ -35,13 +37,20 @@ import json
 import os
 import re
 import sys
+import tarfile
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 from html.parser import HTMLParser
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen, urlretrieve
 
-DOC_RELEASE_API = "https://api.github.com/repos/PeterFeicht/cppreference-doc/releases/latest"
+# newest source first: the fork keeps releasing full site copies, the html book
+# stopped in 2025-02 (its tooling broke in the 2026-04 site upgrade)
+DOC_REPOS = [
+    "cristianadam/cppreference-doc",
+    "PeterFeicht/cppreference-doc",
+]
 # symbols a regeneration must still find: (key, page)
 PROBES = [
     ("std::print", "cpp/io/print"),
@@ -49,6 +58,10 @@ PROBES = [
     ("std::format", "cpp/utility/format/format"),
     ("std::expected", "cpp/utility/expected"),
     ("std::jthread", "cpp/thread/jthread"),
+    # only present in post-2025 archives: catches a silently stale source
+    ("std::hive", "cpp/container/hive"),
+    ("std::indirect", "cpp/memory/indirect"),
+    ("std::bit_compress", "cpp/numeric/bit_compress"),
     ("std::mdspan", "cpp/container/mdspan"),
     ("std::span", "cpp/container/span"),
     ("std::stacktrace", "cpp/utility/basic_stacktrace"),
@@ -361,7 +374,8 @@ def parse_symbol_index(raw):
     """
     m = TITLE_RE.search(raw)
     title = re.sub(r"\s*[-\u2013]\s*cppreference\.com\s*$", "", clean(m.group(1))) if m else ""
-    ns = re.sub(r"\s*Symbol Index$", "", title).strip()
+    # sub-index pages title themselves "std::chrono Symbol Index (since C++11)"
+    ns = re.sub(r"\s*Symbol Index\b.*$", "", title).strip()
     prefix = ns + "::" if ns == "std" or ("::" in ns and NAME_RE.match(ns)) else ""
     out = []
     for target, body in INDEX_LINK_RE.findall(raw):
@@ -373,18 +387,42 @@ def parse_symbol_index(raw):
     return out
 
 
+def escape_name(name):
+    """Percent-escape what Windows cannot store, so every platform writes the same paths.
+
+    The site names pages after the entity, so `std::optional::operator*` lives at
+    `cpp/utility/optional/operator*` and the `s` literal at
+    `cpp/string/basic_string/operator%22%22s`.  Escaping keeps extraction working
+    on Windows while the URL stays the one cppreference.com serves.
+    """
+    return name.translate({ord(c): "%%%02X" % ord(c) for c in '<>:"|?*%'})
+
+
+def unescape_name(name):
+    return re.sub(r"%([0-9A-F]{2})", lambda m: chr(int(m.group(1), 16)), name)
+
+
 class Pages:
     """Uniform read access to the pages of a release zip or an extracted tree."""
 
     def __init__(self, root):
         self.zip = zipfile.ZipFile(root) if zipfile.is_zipfile(root) else None
         self.dir = None if self.zip else root
-        self.names = []
+        self.members = {}  # normalized page name -> the name this archive stores it under
         for name in (self.zip.namelist() if self.zip else self._walk()):
             if not name.startswith("reference/") or not name.endswith(".html"):
                 continue
-            self.names.append(name[len("reference/"):])
-        self.names.sort()
+            member = name[len("reference/"):]
+            # extraction escapes what Windows cannot store; the zip keeps raw names
+            logical = self._normalize(member if self.zip else unescape_name(member))
+            self.members.setdefault(logical, member)
+        self.names = sorted(self.members)
+
+    @staticmethod
+    def _normalize(name):
+        """Site dumps keep the host in the path: en.cppreference.com/cpp/... -> en/cpp/..."""
+        host = re.match(r"([a-z]{2}(?:-[a-z]+)?)\.cppreference\.com/", name)
+        return host.group(1) + "/" + name[host.end():] if host else name
 
     def _walk(self):
         for dirpath, _, files in os.walk(self.dir):
@@ -396,9 +434,10 @@ class Pages:
                         yield full[i:]
 
     def read(self, name):
+        member = self.members.get(name, name)
         if self.zip:
-            return self.zip.read("reference/" + name).decode("utf-8", "replace")
-        return open(os.path.join(self.dir, "reference", name), encoding="utf-8", errors="replace").read()
+            return self.zip.read("reference/" + member).decode("utf-8", "replace")
+        return open(os.path.join(self.dir, "reference", member), encoding="utf-8", errors="replace").read()
 
     def doc_paths(self):
         """Every page path the extension can link to, e.g. "cpp/io/print"."""
@@ -414,11 +453,16 @@ class Pages:
         """
         name = "cppreference-doxygen-web.tag.xml"
         if self.zip:
-            if name not in self.zip.namelist():
-                return None
-            return self.zip.read(name)
-        path = os.path.join(self.dir, name)
-        return open(path, "rb").read() if os.path.exists(path) else None
+            if name in self.zip.namelist():
+                return self.zip.read(name)
+        else:
+            path = os.path.join(self.dir, name)
+            if os.path.exists(path):
+                return open(path, "rb").read()
+        # the maintained fork publishes no tag file, so the copy pinned next to
+        # this script keeps supplying the class and data member keys
+        pinned = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+        return open(pinned, "rb").read() if os.path.exists(pinned) else None
 
 
 def parse_tagfile(data):
@@ -498,29 +542,79 @@ def build(docs):
 
 
 def download_latest():
-    """Fetch the newest unofficial html book (the official archive is from 2019)."""
-    request = Request(DOC_RELEASE_API, headers={"User-Agent": "cpp-search-extension"})
-    with urlopen(request, timeout=60) as response:
-        release = json.load(response)
-    asset = next(a for a in release["assets"] if a["name"].startswith("html-book") and a["name"].endswith(".zip"))
-    target = os.path.join(tempfile.gettempdir(), asset["name"])
-    if os.path.exists(target) and os.path.getsize(target) == asset["size"]:
-        print("using cached %s" % target)
-    else:
-        print("downloading %s (%.0f MB)" % (asset["name"], asset["size"] / 1048576))
-        urlretrieve(asset["browser_download_url"], target)
-    return target
+    """Fetch the newest offline docs archive, newest source first.
+
+    The 2026-04 site upgrade broke the tooling behind the html book releases
+    (PeterFeicht/cppreference-doc#51) and none has appeared since 2025-02, while
+    the maintained fork keeps releasing a full copy of the site as
+    `cppreference-doc-<date>.tar.xz` (no doxygen tag file, hence the pinned
+    fallback in Pages.read_tagfile).
+    """
+    for repo in DOC_REPOS:
+        api = "https://api.github.com/repos/%s/releases/latest" % repo
+        request = Request(api, headers={"User-Agent": "cpp-search-extension"})
+        try:
+            with urlopen(request, timeout=60) as response:
+                release = json.load(response)
+        except HTTPError as exc:
+            print("skipping %s: %s" % (repo, exc))
+            continue
+        dumps = [a for a in release["assets"]
+                 if a["name"].startswith("cppreference-doc") and a["name"].endswith(".tar.xz")]
+        books = [a for a in release["assets"]
+                 if a["name"].startswith("html-book") and a["name"].endswith(".zip")]
+        asset = (dumps or books or [None])[0]
+        if asset is None:
+            continue
+        target = os.path.join(tempfile.gettempdir(), asset["name"])
+        if os.path.exists(target) and os.path.getsize(target) == asset["size"]:
+            print("using cached %s (%s)" % (target, release["tag_name"]))
+        else:
+            print("downloading %s %s (%.0f MB)"
+                  % (repo, release["tag_name"], asset["size"] / 1048576))
+            urlretrieve(asset["browser_download_url"], target)
+        return target
+    raise SystemExit("no docs archive found in %s" % ", ".join(DOC_REPOS))
 
 
 def extract(docs, target):
-    """Unpack reference/ and the doxygen tag file for the Rust tool, which walks files on disk."""
-    if not zipfile.is_zipfile(docs):
+    """Unpack reference/ (and any tag file) for the Rust tool, which walks files on disk.
+
+    A site dump nests its pages under the host name, `reference/en.cppreference.com/
+    cpp/...`; those language directories are renamed to the `reference/en/` layout
+    that the Rust tool is pointed at.
+    """
+    if zipfile.is_zipfile(docs):
+        with zipfile.ZipFile(docs) as archive:
+            members = [e for e in archive.infolist()
+                       if e.filename.startswith("reference/") and e.filename.endswith(".html")
+                       or e.filename.endswith(".tag.xml")]
+            archive.extractall(target, members)
+        count = len(members)
+    elif tarfile.is_tarfile(docs):
+        # only pages: the dump also carries assets whose names are not valid file names
+        with tarfile.open(docs) as archive:
+            members = [m for m in archive.getmembers()
+                       if m.isfile() and (m.name.endswith(".html") or m.name.endswith(".tag.xml"))]
+            for member in members:
+                i = member.name.rfind("reference/")
+                out = member.name[i:] if i >= 0 else os.path.basename(member.name)
+                path = os.path.join(target, escape_name(out))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as f:
+                    f.write(archive.extractfile(member).read())
+        count = len(members)
+    else:
         return
-    with zipfile.ZipFile(docs) as archive:
-        members = [e for e in archive.infolist()
-                   if e.filename.startswith("reference/") or e.filename.endswith(".tag.xml")]
-        archive.extractall(target, members)
-    print("extracted %d files to %s" % (len(members), target))
+    for lang in sorted(os.listdir(os.path.join(target, "reference"))):
+        if lang.endswith(".cppreference.com"):
+            plain = lang[:-len(".cppreference.com")]
+            source = os.path.join(target, "reference", lang)
+            destination = os.path.join(target, "reference", plain)
+            if not os.path.exists(destination):
+                os.replace(source, destination)
+                print("renamed reference/%s to reference/%s" % (lang, plain))
+    print("extracted %d files to %s" % (count, target))
 
 
 def main():
@@ -536,6 +630,8 @@ def main():
     docs = args.docs
     if docs == "latest":
         docs = download_latest()
+    if not args.extract_to and os.path.isfile(docs) and tarfile.is_tarfile(docs):
+        args.extract_to = tempfile.mkdtemp(prefix="cppreference-docs-")
     if args.extract_to:
         extract(docs, args.extract_to)
         docs = args.extract_to
@@ -547,7 +643,8 @@ def main():
         path = os.path.join(args.out_dir, fname)
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             for key in sorted(entries):
-                f.write("%s => %s\n" % (key, entries[key]))
+                # paths, not names: only the invalid-in-a-file-name characters move
+                f.write("%s => %s\n" % (key, escape_name(entries[key])))
         print("%s: %d entries" % (path, len(entries)))
 
     missing = [probe for probe, target in PROBES if buckets["cpp/"].get(probe, buckets["c/"].get(probe)) != target]
@@ -556,6 +653,14 @@ def main():
         print("   not mapped: %s" % ", ".join(missing))
         if args.check:
             sys.exit(1)
+
+    if args.check:
+        # a probe list alone missed a 26% loss once, so guard the size too
+        for fname, prefix, floor in (("search-cpp", "cpp/", 19000), ("search-c", "c/", 1300)):
+            if len(buckets[prefix]) < floor:
+                print("self-check: %s has %d entries, expected at least %d"
+                      % (fname, len(buckets[prefix]), floor))
+                sys.exit(1)
 
     if args.extract_to:
         print("\nNow rebuild the index the extension loads:")
